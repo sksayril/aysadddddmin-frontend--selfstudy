@@ -1,0 +1,730 @@
+import React, { useState, useEffect } from 'react';
+import { useDropzone } from 'react-dropzone';
+import { Plus, ChevronRight, FileText, Image as ImageIcon, FileBox, Upload, X, CheckCircle, Eye } from 'lucide-react';
+import { TreeItem } from '../ui/tree-view';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from '../ui/dialog';
+
+interface Category {
+  _id: string;
+  name: string;
+  type: string;
+  parentId?: string;
+  path: string[];
+  content?: {
+    imageUrls: string[];
+    pdfUrl?: string;
+    text?: string;
+  };
+}
+
+interface ParentCategory {
+  _id: string;
+  name: string;
+  path: string[];
+}
+
+interface UploadedFile {
+  file: File;
+  type: 'image' | 'pdf';
+}
+
+interface ContentResponse {
+  message: string;
+  content: {
+    imageUrls: string[];
+    pdfUrl?: string;
+    text?: string;
+  };
+}
+
+// Content Preview Dialog Component
+const ContentPreviewDialog = ({ 
+  category, 
+  isOpen, 
+  onClose 
+}: { 
+  category: Category | null;
+  isOpen: boolean;
+  onClose: () => void;
+}) => {
+  if (!category || !category.content) return null;
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[700px]">
+        <DialogHeader>
+          <DialogTitle>{category.name} - Content Preview</DialogTitle>
+          <DialogDescription>
+            Path: {category.path.join(' > ')}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-6 py-4 max-h-[70vh] overflow-y-auto">
+          {/* Text Content */}
+          {category.content.text && (
+            <div className="space-y-2">
+              <h4 className="text-lg font-medium">Text Content</h4>
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <p className="text-gray-700 whitespace-pre-wrap">{category.content.text}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Images */}
+          {category.content.imageUrls && category.content.imageUrls.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="text-lg font-medium">Images</h4>
+              <div className="grid grid-cols-2 gap-4">
+                {category.content.imageUrls.map((url, index) => (
+                  <div key={index} className="relative aspect-square">
+                    <img
+                      src={url}
+                      alt={`Content ${index + 1}`}
+                      className="w-full h-full object-cover rounded-lg"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* PDF */}
+          {category.content.pdfUrl && (
+            <div className="space-y-2">
+              <h4 className="text-lg font-medium">PDF Document</h4>
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <a
+                  href={category.content.pdfUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-blue-600 hover:text-blue-800"
+                >
+                  <FileBox size={20} />
+                  View PDF Document
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+          >
+            Close
+          </button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// Custom Toast component
+const CustomToast = ({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) => {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onClose();
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  return (
+    <div className={`fixed bottom-4 right-4 p-4 rounded-lg shadow-lg flex items-center gap-2 ${
+      type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+    }`}>
+      {type === 'success' ? <CheckCircle size={20} /> : <X size={20} />}
+      <span>{message}</span>
+      <button onClick={onClose} className="ml-2 text-gray-500 hover:text-gray-700">
+        <X size={16} />
+      </button>
+    </div>
+  );
+};
+
+function Categories() {
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [parentCategories, setParentCategories] = useState<ParentCategory[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [isLastCategory, setIsLastCategory] = useState(false);
+  const [showContentDialog, setShowContentDialog] = useState(false);
+  const [showPreviewDialog, setShowPreviewDialog] = useState(false);
+  const [previewCategory, setPreviewCategory] = useState<Category | null>(null);
+  const [contentType, setContentType] = useState<'text' | 'image' | 'pdf' | null>(null);
+  const [contentText, setContentText] = useState('');
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [uploadProgress, setUploadProgress] = useState(false);
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' as 'success' | 'error' });
+  const [showMainCategoryDialog, setShowMainCategoryDialog] = useState(false);
+  const [mainCategoryName, setMainCategoryName] = useState('');
+
+  const token = localStorage.getItem('adminToken');
+
+  const { getRootProps, getInputProps } = useDropzone({
+    accept: contentType === 'image' 
+      ? { 'image/*': ['.png', '.jpg', '.jpeg'] } 
+      : contentType === 'pdf' 
+        ? { 'application/pdf': ['.pdf'] } 
+        : {},
+    onDrop: (acceptedFiles) => {
+      if (contentType === 'image' || contentType === 'pdf') {
+        const newFiles = acceptedFiles.map(file => ({
+          file,
+          type: contentType === 'image' ? 'image' as const : 'pdf' as const
+        }));
+        setUploadedFiles(newFiles);
+      }
+    },
+    disabled: !contentType || contentType === 'text',
+    maxFiles: contentType === 'pdf' ? 1 : 5,
+  });
+
+  const removeFile = (index: number) => {
+    setUploadedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handlePreviewClick = (category: Category, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setPreviewCategory(category);
+    setShowPreviewDialog(true);
+  };
+
+  const handleAddMainCategory = async () => {
+    if (!mainCategoryName.trim()) return;
+
+    try {
+      const response = await fetch('http://localhost:3100/api/categories', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: mainCategoryName,
+          type: 'category'
+        })
+      });
+
+      if (response.ok) {
+        setToast({
+          show: true,
+          message: 'Main category created successfully',
+          type: 'success'
+        });
+        setMainCategoryName('');
+        setShowMainCategoryDialog(false);
+        fetchParentCategories();
+      } else {
+        const errorData = await response.json();
+        setError(errorData.message || 'Failed to create main category');
+      }
+    } catch (err) {
+      setError('Failed to create main category');
+    }
+  };
+
+  const fetchParentCategories = async () => {
+    try {
+      const response = await fetch('https://7cvccltb-3100.inc1.devtunnels.ms/api/categories/parents', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await response.json();
+      setParentCategories(data[0]?.parents || []);
+    } catch (err) {
+      setError('Failed to fetch parent categories');
+    }
+  };
+
+  const fetchCategories = async (parentId?: string) => {
+    try {
+      setLoading(true);
+      const url = parentId 
+        ? `https://7cvccltb-3100.inc1.devtunnels.ms/api/categories/subcategories/${parentId}`
+        : 'https://7cvccltb-3100.inc1.devtunnels.ms/api/categories';
+      
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await response.json();
+      const subcategories = parentId && data[0]?.subcategories ? data[0].subcategories : data || [];
+      setCategories(subcategories);
+      setLoading(false);
+    } catch (err) {
+      setError('Failed to fetch categories');
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchParentCategories();
+  }, []);
+
+  const handleCategoryClick = async (category: Category | ParentCategory) => {
+    setSelectedCategory(category as Category);
+    await fetchCategories(category._id);
+  };
+
+  const handleAddCategory = async () => {
+    if (!newCategoryName) return;
+
+    try {
+      const payload = {
+        name: newCategoryName,
+        type: isLastCategory ? 'content' : 'category',
+        ...(selectedCategory && { parentId: selectedCategory._id })
+      };
+
+      const response = await fetch('https://7cvccltb-3100.inc1.devtunnels.ms/api/categories', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        setNewCategoryName('');
+        if (selectedCategory) {
+          fetchCategories(selectedCategory._id);
+        } else {
+          fetchParentCategories();
+        }
+
+        const data = await response.json();
+        if (isLastCategory) {
+          setSelectedCategory(data);
+        }
+      } else {
+        setError('Failed to add category');
+      }
+    } catch (err) {
+      setError('Failed to add category');
+    }
+  };
+
+  const openContentDialog = (type: 'text' | 'image' | 'pdf') => {
+    setContentType(type);
+    setContentText('');
+    setUploadedFiles([]);
+    setShowContentDialog(true);
+  };
+
+  const handleAddContent = async () => {
+    if (!selectedCategory || !contentType) return;
+    setUploadProgress(true);
+    setError('');
+
+    try {
+      const formData = new FormData();
+      formData.append('categoryid', selectedCategory._id);
+      
+      if (contentType === 'text' && contentText.trim()) {
+        formData.append('text', contentText);
+      } else if (contentType === 'image') {
+        uploadedFiles.forEach(({ file }) => {
+          formData.append('images', file);
+        });
+      } else if (contentType === 'pdf' && uploadedFiles.length > 0) {
+        formData.append('pdf', uploadedFiles[0].file);
+      }
+
+      const response = await fetch('https://7cvccltb-3100.inc1.devtunnels.ms/api/categories/content', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      if (response.ok) {
+        const data: ContentResponse = await response.json();
+        setToast({
+          show: true,
+          message: data.message || `${contentType} content added successfully`,
+          type: 'success'
+        });
+        
+        setShowContentDialog(false);
+        setContentType(null);
+        setContentText('');
+        setUploadedFiles([]);
+        
+        if (selectedCategory.parentId) {
+          fetchCategories(selectedCategory.parentId);
+        } else {
+          fetchParentCategories();
+        }
+      } else {
+        const errorData = await response.json();
+        setError(errorData.message || 'Failed to add content');
+      }
+    } catch (err) {
+      setError('Failed to add content');
+    } finally {
+      setUploadProgress(false);
+    }
+  };
+
+  const isContentCategory = (category: Category) => {
+    return category.type === 'content';
+  };
+
+  const hasContent = (category: Category) => {
+    return category.content && (
+      category.content.text ||
+      (category.content.imageUrls && category.content.imageUrls.length > 0) ||
+      category.content.pdfUrl
+    );
+  };
+
+  return (
+    <div className="flex gap-6">
+      {/* Tree View Sidebar */}
+      <div className="w-64 bg-white rounded-lg shadow-md p-4">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Categories</h2>
+          <button
+            onClick={() => setShowMainCategoryDialog(true)}
+            className="bg-blue-500 text-white p-2 rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-1"
+          >
+            <Plus size={16} />
+            <span>Main</span>
+          </button>
+        </div>
+        <div className="space-y-1">
+          {parentCategories.map((parent) => (
+            <TreeItem
+              key={parent._id}
+              label={parent.name}
+              defaultExpanded={selectedCategory?._id === parent._id}
+              onClick={() => handleCategoryClick(parent)}
+            >
+              {categories.map((category) => (
+                <TreeItem
+                  key={category._id}
+                  label={category.name}
+                  onClick={() => handleCategoryClick(category)}
+                />
+              ))}
+            </TreeItem>
+          ))}
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 space-y-6">
+        {/* Add Category Form */}
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-4">
+              <input
+                type="text"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                placeholder="Enter category name"
+                className="flex-1 rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                onClick={handleAddCategory}
+                className="bg-gradient-to-r from-blue-600 to-green-600 text-white px-6 py-2 rounded-lg hover:from-blue-700 hover:to-green-700 flex items-center gap-2 transition-all"
+              >
+                <Plus size={20} />
+                Add SubCategory
+              </button>
+            </div>
+            {selectedCategory && (
+              <label className="flex items-center gap-2 text-sm text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={isLastCategory}
+                  onChange={(e) => setIsLastCategory(e.target.checked)}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span>This is a final category (will contain content)</span>
+              </label>
+            )}
+          </div>
+        </div>
+
+        {/* Selected Category Content */}
+        {selectedCategory && (
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <h2 className="text-xl font-semibold mb-2">{selectedCategory.name}</h2>
+            <p className="text-sm text-gray-500 mb-6">
+              Path: {selectedCategory.path.join(' > ')}
+            </p>
+            
+            {/* Add Content Buttons for Final Categories */}
+            {isContentCategory(selectedCategory) && (
+              <div className="mb-6 flex gap-2">
+                <button 
+                  onClick={() => openContentDialog('text')}
+                  className="bg-blue-100 text-blue-700 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-200 transition-colors"
+                >
+                  <FileText size={18} />
+                  Add Text
+                </button>
+                <button 
+                  onClick={() => openContentDialog('image')}
+                  className="bg-green-100 text-green-700 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-200 transition-colors"
+                >
+                  <ImageIcon size={18} />
+                  Add Images
+                </button>
+                <button 
+                  onClick={() => openContentDialog('pdf')}
+                  className="bg-red-100 text-red-700 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-red-200 transition-colors"
+                >
+                  <FileBox size={18} />
+                  Add PDF
+                </button>
+              </div>
+            )}
+            
+            {/* Category Content Grid */}
+            {loading ? (
+              <div className="text-center py-8">Loading...</div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {categories.map((category) => (
+                  <div
+                    key={category._id}
+                    onClick={() => handleCategoryClick(category)}
+                    className="bg-white rounded-lg shadow-sm p-6 cursor-pointer hover:shadow-md transition-shadow border border-gray-100 relative"
+                  >
+                    <div className="flex flex-col">
+                      <h3 className="font-semibold text-lg">{category.name}</h3>
+                      <p className="text-sm text-gray-500 mt-1">
+                        Type: {category.type}
+                      </p>
+                      <div className="flex justify-between items-center mt-2">
+                        <div className="flex gap-2">
+                          {category.type === 'content' && category.content && (
+                            <>
+                              {category.content.text && <FileText size={18} className="text-gray-600" />}
+                              {category.content.imageUrls?.length > 0 && (
+                                <ImageIcon size={18} className="text-gray-600" />
+                              )}
+                              {category.content.pdfUrl && <FileBox size={18} className="text-gray-600" />}
+                            </>
+                          )}
+                        </div>
+                        {hasContent(category) && (
+                          <button
+                            onClick={(e) => handlePreviewClick(category, e)}
+                            className="absolute top-2 right-2 p-2 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                            title="Preview Content"
+                          >
+                            <Eye size={18} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {error && (
+          <div className="bg-red-50 text-red-600 p-4 rounded-lg">
+            {error}
+          </div>
+        )}
+      </div>
+
+      {/* Main Category Dialog */}
+      <Dialog open={showMainCategoryDialog} onOpenChange={setShowMainCategoryDialog}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Create Main Category</DialogTitle>
+            <DialogDescription>
+              Add a new main category to organize your content
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Category Name</label>
+              <input
+                type="text"
+                value={mainCategoryName}
+                onChange={(e) => setMainCategoryName(e.target.value)}
+                placeholder="Enter main category name"
+                className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <button
+              onClick={() => setShowMainCategoryDialog(false)}
+              className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all mr-2"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleAddMainCategory}
+              disabled={!mainCategoryName.trim()}
+              className="bg-gradient-to-r from-blue-600 to-green-600 text-white px-4 py-2 rounded-lg hover:from-blue-700 hover:to-green-700 transition-all disabled:opacity-50"
+            >
+              Create Category
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Content Upload Dialog */}
+      <Dialog open={showContentDialog} onOpenChange={setShowContentDialog}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>
+              {contentType === 'text' ? 'Add Text Content' : 
+               contentType === 'image' ? 'Add Images' : 
+               contentType === 'pdf' ? 'Add PDF Document' : 
+               'Add Content'} to {selectedCategory?.name}
+            </DialogTitle>
+            <DialogDescription>
+              {contentType === 'text' ? 'Add text content to this category' : 
+               contentType === 'image' ? 'Upload image files (JPG, PNG)' : 
+               contentType === 'pdf' ? 'Upload a PDF document' : 
+               'Add content to this category'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {contentType === 'text' && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Text Content</label>
+                <textarea
+                  value={contentText}
+                  onChange={(e) => setContentText(e.target.value)}
+                  className="w-full min-h-[200px] rounded-lg border border-gray-300 p-2"
+                  placeholder="Enter text content..."
+                />
+              </div>
+            )}
+            
+            {(contentType === 'image' || contentType === 'pdf') && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">
+                  {contentType === 'image' ? 'Upload Images' : 'Upload PDF Document'}
+                </label>
+                <div
+                  {...getRootProps()}
+                  className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-500 transition-colors"
+                >
+                  <input {...getInputProps()} />
+                  <Upload className="mx-auto h-12 w-12 text-gray-400" />
+                  <p className="mt-2 text-sm text-gray-600">
+                    Drag & drop {contentType === 'image' ? 'images' : 'PDF file'} here, or click to select
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {contentType === 'image' ? 'Supports: PNG, JPG, JPEG' : 'Supports: PDF files only'}
+                  </p>
+                </div>
+                
+                {uploadedFiles.length > 0 && (
+                  <div className="mt-4">
+                    {contentType === 'image' && (
+                      <div className="mb-4">
+                        <h4 className="text-sm font-medium mb-2">Images ({uploadedFiles.length})</h4>
+                        <ul className="space-y-2">
+                          {uploadedFiles.map((file, index) => (
+                            <li key={`img-${index}`} className="text-sm text-gray-600 flex items-center justify-between p-2 bg-gray-50 rounded">
+                              <div className="flex items-center gap-2">
+                                <ImageIcon size={16} />
+                                {file.file.name}
+                              </div>
+                              <button
+                                onClick={() => removeFile(index)}
+                                className="text-gray-400 hover:text-red-500 transition-colors"
+                              >
+                                <X size={16} />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    {contentType === 'pdf' && (
+                      <div>
+                        <h4 className="text-sm font-medium mb-2">PDF Document</h4>
+                        <ul className="space-y-2">
+                          {uploadedFiles.map((file, index) => (
+                            <li key={`pdf-${index}`} className="text-sm text-gray-600 flex items-center justify-between p-2 bg-gray-50 rounded">
+                              <div className="flex items-center gap-2">
+                                <FileBox size={16} />
+                                {file.file.name}
+                              </div>
+                              <button
+                                onClick={() => removeFile(index)}
+                                className="text-gray-400 hover:text-red-500 transition-colors"
+                              >
+                                <X size={16} />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <button
+              onClick={() => setShowContentDialog(false)}
+              className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all mr-2"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleAddContent}
+              disabled={uploadProgress || 
+                (contentType === 'text' && !contentText.trim()) || 
+                ((contentType === 'image' || contentType === 'pdf') && uploadedFiles.length === 0)}
+              className="bg-gradient-to-r from-blue-600 to-green-600 text-white px-4 py-2 rounded-lg hover:from-blue-700 hover:to-green-700 transition-all disabled:opacity-50"
+            >
+              {uploadProgress ? 'Uploading...' : `Save ${contentType === 'text' ? 'Text' : contentType === 'image' ? 'Images' : 'PDF'}`}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Content Preview Dialog */}
+      <ContentPreviewDialog
+        category={previewCategory}
+        isOpen={showPreviewDialog}
+        onClose={() => {
+          setShowPreviewDialog(false);
+          setPreviewCategory(null);
+        }}
+      />
+
+      {/* Custom Toast Notification */}
+      {toast.show && (
+        <CustomToast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast({ ...toast, show: false })}
+        />
+      )}
+    </div>
+  );
+}
+
+export default Categories;
