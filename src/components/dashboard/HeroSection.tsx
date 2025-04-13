@@ -20,7 +20,7 @@ function HeroSection() {
   useEffect(() => {
     const fetchBanners = async () => {
       try {
-        const response = await fetch('http://localhost:3100/api/get/hero-banners');
+        const response = await fetch('https://api.notesmarket.in/api/get/hero-banners');
         if (!response.ok) {
           throw new Error('Failed to fetch banners');
         }
@@ -101,7 +101,7 @@ function HeroSection() {
 
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:3100/api/upload-hero-banner', {
+      const response = await fetch('https://api.notesmarket.in/api/upload-hero-banner', {
         method: 'POST',
         body: formData,
       });
@@ -113,7 +113,7 @@ function HeroSection() {
       const result = await response.json();
       
       // Refresh banners list
-      const bannersResponse = await fetch('http://localhost:3100/api/get/hero-banners');
+      const bannersResponse = await fetch('https://api.notesmarket.in/api/get/hero-banners');
       const bannersData = await bannersResponse.json();
       setBanners(bannersData.data);
       

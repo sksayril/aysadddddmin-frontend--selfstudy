@@ -87,7 +87,7 @@ function Blogs() {
   const fetchBlogs = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:3100/api/get/blogs');
+      const response = await fetch('https://api.notesmarket.in/api/get/blogs');
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -259,7 +259,7 @@ function Blogs() {
       });
       
       // Send the data to the server
-      const response = await fetch('http://localhost:3100/api/upload-blog', {
+      const response = await fetch('https://api.notesmarket.in/api/upload-blog', {
         method: 'POST',
         body: formData,
       });
@@ -329,7 +329,7 @@ function Blogs() {
       });
       
       // Send the data to the server
-      const response = await fetch('http://localhost:3100/api/update-blog', {
+      const response = await fetch('https://api.notesmarket.in/api/update-blog', {
         method: 'POST',
         body: formData,
       });

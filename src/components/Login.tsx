@@ -17,7 +17,7 @@ function Login({ onLogin }: LoginProps) {
     setError('');
 
     try {
-      const response = await fetch('https://7cvccltb-3100.inc1.devtunnels.ms/users/login', {
+      const response = await fetch('https://api.notesmarket.in/users/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

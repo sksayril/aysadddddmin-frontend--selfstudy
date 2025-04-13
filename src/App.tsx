@@ -33,7 +33,7 @@ function App() {
     { id: 'categories', label: 'Categories', icon: ListPlus },
     { id: 'blogs', label: 'Blogs', icon: ListPlus },
     { id: 'hero', label: 'Hero Section', icon: Image },
-    // { id: 'banner', label: 'Banner', icon: Image },
+    { id: 'banner', label: 'Quiz', icon: Image },
     { id: 'updates', label: 'Latest Updates', icon: Bell },
   ];
 

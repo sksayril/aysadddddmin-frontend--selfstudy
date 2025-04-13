@@ -29,7 +29,7 @@ function LatestUpdates() {
   useEffect(() => {
     const fetchUpdates = async () => {
       try {
-        const response = await fetch('http://localhost:3100/api/latest-updates');
+        const response = await fetch('https://api.notesmarket.in/api/latest-updates');
         if (!response.ok) {
           throw new Error('Failed to fetch updates');
         }
@@ -166,7 +166,7 @@ Make sure the output is clear, engaging, and suitable for a general blog audienc
         data.append('image', imageFile);
       }
 
-      const response = await fetch('http://localhost:3100/api/latest/upload-update', {
+      const response = await fetch('https://api.notesmarket.in/api/latest/upload-update', {
         method: 'POST',
         body: data
       });
@@ -188,7 +188,7 @@ Make sure the output is clear, engaging, and suitable for a general blog audienc
       setSuccessMessage('Update added successfully!');
       
       // Refresh the updates list
-      const updatedResponse = await fetch('http://localhost:3100/api/latest-updates');
+      const updatedResponse = await fetch('https://api.notesmarket.in/api/latest-updates');
       const result = await updatedResponse.json();
       setUpdates(result.data || []);
       

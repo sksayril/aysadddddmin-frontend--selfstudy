@@ -201,7 +201,7 @@
 //     if (!mainCategoryName.trim()) return;
 
 //     try {
-//       const response = await fetch('http://localhost:3100/api/categories', {
+//       const response = await fetch('https://api.notesmarket.in/api/categories', {
 //         method: 'POST',
 //         headers: {
 //           'Content-Type': 'application/json',
@@ -233,7 +233,7 @@
 
 //   const fetchParentCategories = async () => {
 //     try {
-//       const response = await fetch('https://7cvccltb-3100.inc1.devtunnels.ms/api/categories/parents', {
+//       const response = await fetch('https://api.notesmarket.in/api/categories/parents', {
 //         headers: {
 //           'Authorization': `Bearer ${token}`
 //         }
@@ -249,8 +249,8 @@
 //     try {
 //       setLoading(true);
 //       const url = parentId 
-//         ? `https://7cvccltb-3100.inc1.devtunnels.ms/api/categories/subcategories/${parentId}`
-//         : 'https://7cvccltb-3100.inc1.devtunnels.ms/api/categories';
+//         ? `https://api.notesmarket.in/api/categories/subcategories/${parentId}`
+//         : 'https://api.notesmarket.in/api/categories';
       
 //       const response = await fetch(url, {
 //         headers: {
@@ -286,7 +286,7 @@
 //         ...(selectedCategory && { parentId: selectedCategory._id })
 //       };
 
-//       const response = await fetch('https://7cvccltb-3100.inc1.devtunnels.ms/api/categories', {
+//       const response = await fetch('https://api.notesmarket.in/api/categories', {
 //         method: 'POST',
 //         headers: {
 //           'Content-Type': 'application/json',
@@ -341,7 +341,7 @@
 //         formData.append('pdf', uploadedFiles[0].file);
 //       }
 
-//       const response = await fetch('https://7cvccltb-3100.inc1.devtunnels.ms/api/categories/content', {
+//       const response = await fetch('https://api.notesmarket.in/api/categories/content', {
 //         method: 'POST',
 //         headers: {
 //           'Authorization': `Bearer ${token}`
@@ -945,7 +945,7 @@ function Categories() {
   const [deletingCategory, setDeletingCategory] = useState(false);
 
   const token = localStorage.getItem('adminToken');
-  const apiBaseUrl = 'https://7cvccltb-3100.inc1.devtunnels.ms/api';
+  const apiBaseUrl = 'https://api.notesmarket.in/api';
 
   const { getRootProps, getInputProps } = useDropzone({
     accept: contentType === 'image' 
