@@ -18,6 +18,7 @@ export default function Banner() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [deleteConfirmation, setDeleteConfirmation] = useState(null); // Store quiz ID to delete
 
   // For animations and enhanced grading UI
   const [userAnswers, setUserAnswers] = useState({});
@@ -45,6 +46,52 @@ export default function Banner() {
       setError('Error fetching quizzes: ' + err.message);
       setLoading(false);
     }
+  };
+
+  // New function to delete a quiz
+  const handleDeleteQuiz = async () => {
+    if (!deleteConfirmation) return;
+    
+    try {
+      setLoading(true);
+      setError('');
+      
+      const response = await fetch('https://api.notesmarket.in/api/delete/quiz', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: deleteConfirmation }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete quiz');
+      }
+      
+      setSuccessMessage('Quiz deleted successfully!');
+      
+      // If the deleted quiz was the currently selected one, go back to list view
+      if (selectedQuiz && selectedQuiz._id === deleteConfirmation) {
+        setFormView('list');
+        setSelectedQuiz(null);
+      }
+      
+      // Clear the confirmation state
+      setDeleteConfirmation(null);
+      
+      // Refetch quizzes to update the list
+      fetchQuizzes();
+    } catch (err) {
+      setError('Error deleting quiz: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const showDeleteConfirmation = (quizId, event) => {
+    // Stop the event from bubbling up to the parent (which would show quiz details)
+    event.stopPropagation();
+    setDeleteConfirmation(quizId);
   };
 
   const handleCreateQuiz = async (e) => {
@@ -346,6 +393,56 @@ export default function Banner() {
     );
   };
 
+  // Delete confirmation modal
+  const DeleteConfirmationModal = () => {
+    if (!deleteConfirmation) return null;
+    
+    // Find the quiz title for better UX
+    const quizToDelete = quizzes.find(quiz => quiz._id === deleteConfirmation);
+    const quizTitle = quizToDelete ? quizToDelete.title : 'this quiz';
+    
+    return (
+      <motion.div
+        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.3 }}
+      >
+        <motion.div
+          className="bg-white rounded-lg p-6 w-full max-w-md mx-4"
+          initial={{ scale: 0.9, y: 20 }}
+          animate={{ scale: 1, y: 0 }}
+          transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+        >
+          <h3 className="text-xl font-bold mb-4">Delete Quiz</h3>
+          <p className="mb-6">Are you sure you want to delete "{quizTitle}"? This action cannot be undone.</p>
+          
+          <div className="flex justify-end space-x-4">
+            <button
+              onClick={() => setDeleteConfirmation(null)}
+              className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 transition-colors"
+              disabled={loading}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDeleteQuiz}
+              className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+              disabled={loading}
+            >
+              {loading ? (
+                <div className="flex items-center">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  Deleting...
+                </div>
+              ) : 'Delete'}
+            </button>
+          </div>
+        </motion.div>
+      </motion.div>
+    );
+  };
+
   return (
     <div className="bg-white rounded-lg shadow-md p-6 max-w-4xl mx-auto">
       <h2 className="text-2xl font-bold mb-4">Quiz Manager</h2>
@@ -419,9 +516,23 @@ export default function Banner() {
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                 >
-                  <h4 className="font-bold">{quiz.title}</h4>
-                  <p className="text-gray-600">{quiz.questions.length} questions</p>
-                  <p className="text-sm text-gray-500">Created: {new Date(quiz.createdAt).toLocaleDateString()}</p>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <h4 className="font-bold">{quiz.title}</h4>
+                      <p className="text-gray-600">{quiz.questions.length} questions</p>
+                      <p className="text-sm text-gray-500">Created: {new Date(quiz.createdAt).toLocaleDateString()}</p>
+                    </div>
+                    <motion.button
+                      onClick={(e) => showDeleteConfirmation(quiz._id, e)}
+                      className="text-red-500 hover:text-red-600 transition-colors p-2"
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </motion.button>
+                  </div>
                 </motion.div>
               ))}
             </div>
@@ -435,17 +546,30 @@ export default function Banner() {
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5 }}
         >
-          <div className="flex items-center mb-4">
-            <button 
-              onClick={() => {
-                setFormView('list');
-                resetQuizAttempt();
-              }}
-              className="mr-4 text-blue-500 hover:underline flex items-center"
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center">
+              <button 
+                onClick={() => {
+                  setFormView('list');
+                  resetQuizAttempt();
+                }}
+                className="mr-4 text-blue-500 hover:underline flex items-center"
+              >
+                <span className="mr-1">←</span> Back to list
+              </button>
+              <h3 className="text-xl font-semibold">{selectedQuiz.title}</h3>
+            </div>
+            <motion.button
+              onClick={(e) => showDeleteConfirmation(selectedQuiz._id, e)}
+              className="text-red-500 hover:text-red-600 transition-colors p-2 flex items-center"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
             >
-              <span className="mr-1">←</span> Back to list
-            </button>
-            <h3 className="text-xl font-semibold">{selectedQuiz.title}</h3>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              Delete Quiz
+            </motion.button>
           </div>
           
           {quizSubmitted ? (
@@ -638,148 +762,138 @@ export default function Banner() {
                   <span className="mr-2">Submit Quiz</span>
                   {Object.keys(userAnswers).length === selectedQuiz.questions.length && (
                     <motion.span
-                      animate={{ 
-                        scale: [1, 1.2, 1],
-                      }}
-                      transition={{ 
-                        repeat: Infinity,
-                        repeatType: "reverse",
-                        duration: 1 
-                      }}
-                    >
-                      →
-                    </motion.span>
-                  )}
-                </button>
-              </motion.div>
-              
-              <div className="mt-4 text-center text-gray-500">
-                {Object.keys(userAnswers).length} of {selectedQuiz.questions.length} questions answered
-                <ProgressBar 
-                  percentage={(Object.keys(userAnswers).length / selectedQuiz.questions.length) * 100} 
-                />
-              </div>
-            </div>
-          )}
-        </motion.div>
-      )}
-      
-      {formView === 'create' && (
-        <motion.form 
-          onSubmit={handleCreateQuiz}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.5 }}
-        >
-          <div className="mb-6">
-            <label className="block text-gray-700 font-bold mb-2">
-              Quiz Title:
-              <input 
-                type="text" 
-                value={newQuiz.title}
-                onChange={handleQuizTitleChange}
-                className="w-full mt-1 p-2 border rounded focus:ring-2 focus:ring-blue-300 focus:border-blue-300 outline-none transition-all"
-                placeholder="Enter quiz title"
-                required
-              />
-            </label>
-          </div>
-          
-          <h3 className="text-xl font-semibold mb-4">Questions</h3>
-          
-          {newQuiz.questions.map((question, qIndex) => (
-            <motion.div 
-              key={qIndex} 
-              className="mb-8 p-4 border rounded bg-gray-50"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: qIndex * 0.1 }}
-            >
-              <div className="flex justify-between items-center mb-4">
-                <h4 className="font-bold">Question {qIndex + 1}</h4>
-                <motion.button 
-                  type="button"
-                  onClick={() => removeQuestion(qIndex)}
-                  className="text-red-500 hover:text-red-700 transition-colors"
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                >
-                  Remove
-                </motion.button>
-              </div>
-              
-              <div className="mb-4">
-                <label className="block text-gray-700 font-medium mb-2">
-                  Question Text:
-                  <input 
-                    type="text" 
-                    value={question.text}
-                    onChange={(e) => handleQuestionChange(qIndex, 'text', e.target.value)}
-                    className="w-full mt-1 p-2 border rounded focus:ring-2 focus:ring-blue-300 focus:border-blue-300 outline-none transition-all"
-                    placeholder="Enter question text"
-                    required
-                  />
-                </label>
-              </div>
-              
-              <div className="mb-4">
-                <p className="text-gray-700 font-medium mb-2">Options:</p>
-                {question.options.map((option, oIndex) => (
-                  <div key={oIndex} className="flex items-center mb-2">
-                    <span className="mr-2 font-medium">{String.fromCharCode(65 + oIndex)}.</span>
-                    <input 
-                      type="text" 
-                      value={option}
-                      onChange={(e) => handleOptionChange(qIndex, oIndex, e.target.value)}
-                      className="flex-grow p-2 border rounded focus:ring-2 focus:ring-blue-300 focus:border-blue-300 outline-none transition-all"
-                      placeholder={`Option ${oIndex + 1}`}
-                      required
-                    />
-                    <label className="ml-4 flex items-center">
-                      <input 
-                        type="radio" 
-                        name={`correct-answer-${qIndex}`}
-                        checked={question.correctAnswer === option}
-                        onChange={() => handleCorrectAnswerChange(qIndex, option)}
-                        className="mr-1"
-                        required
-                      />
-                      Correct
-                    </label>
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-          ))}
-          
-          <div className="flex justify-between mb-6">
-            <motion.button 
-              type="button"
-              onClick={addQuestion}
-              className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 transition-colors flex items-center"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <span className="mr-1">+</span> Add Question
-            </motion.button>
-            
-            <motion.button 
-              type="submit"
-              className="px-6 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors shadow-md hover:shadow-lg"
-              disabled={loading}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              {loading ? (
-                <div className="flex items-center">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                  Creating...
-                </div>
-              ) : 'Create Quiz'}
-            </motion.button>
-          </div>
-        </motion.form>
-      )}
-    </div>
-  );
-}
+                    animate={{ 
+                      scale: [1, 1.1, 1]
+                    }}
+                    transition={{ duration: 0.5, repeat: 1, repeatType: "reverse" }}
+                                        >
+                                          →
+                                        </motion.span>
+                                      )}
+                                    </button>
+                                  </motion.div>
+                                </div>
+                              )}
+                            </motion.div>
+                          )}
+                          
+                          {formView === 'create' && (
+                            <motion.div
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              transition={{ duration: 0.5 }}
+                            >
+                              <h3 className="text-xl font-semibold mb-4">Create New Quiz</h3>
+                              <form onSubmit={handleCreateQuiz}>
+                                <div className="mb-4">
+                                  <label className="block text-gray-700 font-medium mb-2">Quiz Title</label>
+                                  <input
+                                    type="text"
+                                    className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    value={newQuiz.title}
+                                    onChange={handleQuizTitleChange}
+                                    placeholder="Enter quiz title"
+                                    required
+                                  />
+                                </div>
+                                
+                                {newQuiz.questions.map((question, qIndex) => (
+                                  <motion.div 
+                                    key={qIndex} 
+                                    className="mb-6 p-4 border rounded bg-gray-50"
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ duration: 0.3, delay: qIndex * 0.1 }}
+                                  >
+                                    <div className="flex justify-between items-center mb-2">
+                                      <h4 className="font-semibold">Question {qIndex + 1}</h4>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeQuestion(qIndex)}
+                                        className="text-red-500 hover:text-red-600"
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                    
+                                    <div className="mb-4">
+                                      <label className="block text-gray-700 font-medium mb-2">Question Text</label>
+                                      <input
+                                        type="text"
+                                        className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        value={question.text}
+                                        onChange={(e) => handleQuestionChange(qIndex, 'text', e.target.value)}
+                                        placeholder="Enter question text"
+                                        required
+                                      />
+                                    </div>
+                                    
+                                    <div className="mb-4">
+                                      <label className="block text-gray-700 font-medium mb-2">Options</label>
+                                      {question.options.map((option, oIndex) => (
+                                        <div key={oIndex} className="flex mb-2">
+                                          <span className="bg-gray-200 w-8 h-8 flex items-center justify-center rounded-l">
+                                            {String.fromCharCode(65 + oIndex)}
+                                          </span>
+                                          <input
+                                            type="text"
+                                            className="flex-1 p-2 border border-l-0 rounded-r focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            value={option}
+                                            onChange={(e) => handleOptionChange(qIndex, oIndex, e.target.value)}
+                                            placeholder={`Option ${String.fromCharCode(65 + oIndex)}`}
+                                            required
+                                          />
+                                        </div>
+                                      ))}
+                                    </div>
+                                    
+                                    <div>
+                                      <label className="block text-gray-700 font-medium mb-2">Correct Answer</label>
+                                      <select
+                                        className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        value={question.correctAnswer}
+                                        onChange={(e) => handleCorrectAnswerChange(qIndex, e.target.value)}
+                                        required
+                                      >
+                                        <option value="">Select correct answer</option>
+                                        {question.options.map((option, oIndex) => (
+                                          <option key={oIndex} value={option} disabled={!option.trim()}>
+                                            Option {String.fromCharCode(65 + oIndex)}{option ? `: ${option}` : ' (empty)'}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </div>
+                                  </motion.div>
+                                ))}
+                                
+                                <div className="flex justify-between mb-6">
+                                  <button
+                                    type="button"
+                                    onClick={addQuestion}
+                                    className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300 transition-colors"
+                                  >
+                                    Add Question
+                                  </button>
+                                  
+                                  <button
+                                    type="submit"
+                                    className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                                    disabled={loading}
+                                  >
+                                    {loading ? (
+                                      <div className="flex items-center">
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                                        Creating...
+                                      </div>
+                                    ) : 'Create Quiz'}
+                                  </button>
+                                </div>
+                              </form>
+                            </motion.div>
+                          )}
+                          
+                          {/* Delete confirmation modal */}
+                          <DeleteConfirmationModal />
+                        </div>
+                      );
+                    }

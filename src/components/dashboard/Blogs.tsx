@@ -42,8 +42,10 @@ function Blogs() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedBlog, setSelectedBlog] = useState<any>(null);
   const [isGeneratingContent, setIsGeneratingContent] = useState(false);
+  const [isDeletingBlog, setIsDeletingBlog] = useState(false);
   
   // File upload states
   const [mainImage, setMainImage] = useState<File | null>(null);
@@ -114,6 +116,53 @@ function Blogs() {
     setEditForm({ ...editForm, [name]: value });
   };
 
+  // Function to delete blog
+  const deleteBlog = async () => {
+    if (!selectedBlog || !selectedBlog._id) {
+      setError('No blog selected for deletion.');
+      return;
+    }
+  
+    try {
+      setIsDeletingBlog(true);
+      
+      // Log the data we're sending for debugging
+      console.log("Sending delete request with ID:", selectedBlog._id);
+      
+      // Send the request with proper headers
+      const response = await fetch('https://api.notesmarket.in/api/delete-blog', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ id: selectedBlog._id }),
+      });
+      
+      // For debugging - log the response
+      console.log("Response status:", response.status);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        console.error("Error response data:", errorData);
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      // Close the delete confirmation modal and the view modal
+      setShowDeleteModal(false);
+      setShowViewModal(false);
+      setSelectedBlog(null);
+      
+      // Refresh the blogs list
+      fetchBlogs();
+      
+    } catch (err) {
+      setError('Failed to delete blog. Please try again.');
+      console.error('Error deleting blog:', err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsDeletingBlog(false);
+    }
+  };
   // Generate content using AI
   const handleGenerateContent = async () => {
     if (!blogForm.title || !blogForm.excerpt) {
@@ -717,7 +766,14 @@ function Blogs() {
                 </div>
               )}
               
-              <div className="flex justify-end mt-6">
+              <div className="flex justify-end gap-4 mt-6">
+                <button
+                  type="button"
+                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition"
+                  onClick={() => setShowDeleteModal(true)}
+                >
+                  Delete Blog
+                </button>
                 <button
                   type="button"
                   className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition"
@@ -731,140 +787,136 @@ function Blogs() {
         )}
 
         {/* Edit Blog Modal */}
-        {showEditModal && (
-          <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-            <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-4xl max-h-screen overflow-y-auto">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-bold">Edit Blog</h2>
-                <button 
-                  onClick={() => setShowEditModal(false)}
-                  className="text-gray-500 hover:text-gray-700 text-2xl"
-                >
-                  &times;
-                </button>
-              </div>
-              
-              <form onSubmit={updateBlog}>
-                <input type="hidden" name="_id" value={editForm._id} />
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
-                    <input
-                      type="text"
-                      name="title"
-                      value={editForm.title}
-                      onChange={handleEditInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      required
-                    />
-                  </div>
-                  
-                  <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Excerpt</label>
-                    <textarea
-                      name="excerpt"
-                      value={editForm.excerpt}
-                      onChange={handleEditInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      rows={2}
-                      required
-                    />
-                  </div>
-                  
-                  <div className="col-span-2">
-                    <div className="flex justify-between items-center mb-1">
-                      <label className="block text-sm font-medium text-gray-700">Content</label>
-                      {(editForm.title && editForm.excerpt) && (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            setIsGeneratingContent(true);
-                            try {
-                              const generatedContent = await generateBlogContent(editForm.title, editForm.excerpt);
-                              setEditForm({
-                                ...editForm,
-                                content: generatedContent,
-                                readTime: `${Math.max(3, Math.ceil(generatedContent.length / 1000))} min read`,
-                              });
-                            } catch (err) {
-                              setError('Failed to generate content. Please try again.');
-                              console.error('Error generating content:', err instanceof Error ? err.message : String(err));
-                            } finally {
-                              setIsGeneratingContent(false);
-                            }
-                          }}
-                          disabled={isGeneratingContent}
-                          className="text-sm px-3 py-1 rounded bg-gradient-to-r from-purple-600 to-blue-500 text-white hover:from-purple-700 hover:to-blue-600 transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {isGeneratingContent ? 'Generating...' : 'Generate with AI'}
-                        </button>
-                      )}
-                    </div>
-                    <textarea
-                      name="content"
-                      value={editForm.content}
-                      onChange={handleEditInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      rows={8}
-                      required
-                    />
-                    {isGeneratingContent && (
-                      <div className="mt-2 text-sm text-blue-600">
-                        Generating content using AI based on your title and excerpt...
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                    <input
-                      type="text"
-                      name="category"
-                      value={editForm.category}
-                      onChange={handleEditInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      required
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Read Time</label>
-                    <input
-                      type="text"
-                      name="readTime"
-                      value={editForm.readTime}
-                      onChange={handleEditInputChange}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                      placeholder="e.g. 5 min read"
-                      required
-                    />
-                  </div>
+{/* Edit Blog Modal */}
+{showEditModal && (
+    <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+      <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-4xl max-h-screen overflow-y-auto">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-2xl font-bold">Edit Blog</h2>
+          <button 
+            onClick={() => setShowEditModal(false)}
+            className="text-gray-500 hover:text-gray-700 text-2xl"
+          >
+            &times;
+          </button>
+        </div>
+        
+        <form onSubmit={updateBlog}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+              <input
+                type="text"
+                name="title"
+                value={editForm.title}
+                onChange={handleEditInputChange}
+                className="w-full p-2 border border-gray-300 rounded-md"
+                required
+              />
+            </div>
+            
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Excerpt</label>
+              <textarea
+                name="excerpt"
+                value={editForm.excerpt}
+                onChange={handleEditInputChange}
+                className="w-full p-2 border border-gray-300 rounded-md"
+                rows={2}
+                required
+              />
+            </div>
+            
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Content</label>
+              <textarea
+                name="content"
+                value={editForm.content}
+                onChange={handleEditInputChange}
+                className="w-full p-2 border border-gray-300 rounded-md"
+                rows={6}
+                required
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+              <input
+                type="text"
+                name="category"
+                value={editForm.category}
+                onChange={handleEditInputChange}
+                className="w-full p-2 border border-gray-300 rounded-md"
+                required
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Read Time</label>
+              <input
+                type="text"
+                name="readTime"
+                value={editForm.readTime}
+                onChange={handleEditInputChange}
+                className="w-full p-2 border border-gray-300 rounded-md"
+                placeholder="e.g. 5 min read"
+                required
+              />
+            </div>
 
-                  <div className="col-span-2 flex justify-end gap-4 mt-4">
-                    <button
-                      type="button"
-                      className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition"
-                      onClick={() => setShowEditModal(false)}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition"
-                      disabled={loading}
-                    >
-                      {loading ? 'Updating...' : 'Update Blog'}
-                    </button>
-                  </div>
-                </div>
-              </form>
+            <div className="col-span-2 flex justify-end gap-4 mt-4">
+              <button
+                type="button"
+                className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition"
+                onClick={() => setShowEditModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition"
+                disabled={loading}
+              >
+                {loading ? 'Updating...' : 'Update Blog'}
+              </button>
             </div>
           </div>
-        )}
+        </form>
       </div>
     </div>
-  );
+  )}
+
+  {/* Delete Confirmation Modal */}
+  {showDeleteModal && selectedBlog && (
+    <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+      <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+        <h2 className="text-xl font-bold mb-4">Confirm Delete</h2>
+        
+        <p className="mb-6">Are you sure you want to delete "{selectedBlog.title}"? This action cannot be undone.</p>
+        
+        <div className="flex justify-end gap-4">
+          <button
+            type="button"
+            className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg transition"
+            onClick={() => setShowDeleteModal(false)}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition"
+            onClick={deleteBlog}
+            disabled={isDeletingBlog}
+          >
+            {isDeletingBlog ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )}
+</div>
+</div>
+);
 }
 
 export default Blogs;

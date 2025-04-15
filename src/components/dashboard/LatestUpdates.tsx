@@ -13,7 +13,8 @@ function LatestUpdates() {
     subtitle: '',
     date: '',
     readTime: '',
-    content: ''
+    content: '',
+    isTop: false
   });
   const [imageFile, setImageFile] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -24,11 +25,13 @@ function LatestUpdates() {
   const [selectedUpdate, setSelectedUpdate] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [generatingContent, setGeneratingContent] = useState(false);
+  const [actionInProgress, setActionInProgress] = useState(false);
 
   // Fetch latest updates
   useEffect(() => {
     const fetchUpdates = async () => {
       try {
+        setLoading(true);
         const response = await fetch('https://api.notesmarket.in/api/latest-updates');
         if (!response.ok) {
           throw new Error('Failed to fetch updates');
@@ -47,8 +50,11 @@ function LatestUpdates() {
 
   // Handle form input changes
   const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
+    const { name, value, type, checked } = e.target;
+    setFormData({ 
+      ...formData, 
+      [name]: type === 'checkbox' ? checked : value 
+    });
   };
 
   // Generate content using Google Generative AI
@@ -181,7 +187,8 @@ Make sure the output is clear, engaging, and suitable for a general blog audienc
         subtitle: '',
         date: '',
         readTime: '',
-        content: ''
+        content: '',
+        isTop: false
       });
       setImageFile(null);
       setImagePreview(null);
@@ -202,6 +209,84 @@ Make sure the output is clear, engaging, and suitable for a general blog audienc
       setError(err.message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Toggle pin status
+  const togglePinStatus = async (id, currentIsTop) => {
+    setActionInProgress(true);
+    setError(null);
+    
+    try {
+      const response = await fetch('https://api.notesmarket.in/api/latest/update-isTop', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          id, 
+          isTop: !currentIsTop 
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update pin status');
+      }
+      
+      // Update local state to reflect the change
+      setUpdates(prevUpdates => 
+        prevUpdates.map(update => 
+          update._id === id ? { ...update, isTop: !currentIsTop } : update
+        )
+      );
+      
+      setSuccessMessage(`Update ${!currentIsTop ? 'pinned' : 'unpinned'} successfully!`);
+      setTimeout(() => setSuccessMessage(''), 3000);
+      
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setActionInProgress(false);
+    }
+  };
+  
+  // Delete update
+  const deleteUpdate = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this update?')) {
+      return;
+    }
+    
+    setActionInProgress(true);
+    setError(null);
+    
+    try {
+      const response = await fetch('https://api.notesmarket.in/api/latest/delete-update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete update');
+      }
+      
+      // Remove the deleted update from local state
+      setUpdates(prevUpdates => prevUpdates.filter(update => update._id !== id));
+      
+      // If the deleted update was selected in the modal, close the modal
+      if (selectedUpdate && selectedUpdate._id === id) {
+        closeModal();
+      }
+      
+      setSuccessMessage('Update deleted successfully!');
+      setTimeout(() => setSuccessMessage(''), 3000);
+      
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setActionInProgress(false);
     }
   };
 
@@ -227,7 +312,8 @@ Make sure the output is clear, engaging, and suitable for a general blog audienc
         subtitle: '',
         date: '',
         readTime: '',
-        content: ''
+        content: '',
+        isTop: false
       });
       setImageFile(null);
       setImagePreview(null);
@@ -262,22 +348,23 @@ Make sure the output is clear, engaging, and suitable for a general blog audienc
         </button>
       </div>
       
+      {/* Success or error messages */}
+      {successMessage && (
+        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+          {successMessage}
+        </div>
+      )}
+      
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          Error: {error}
+        </div>
+      )}
+      
       {/* Add new update form */}
       {showForm && (
         <div className="bg-white rounded-lg shadow-md p-6 mb-8 transition-all duration-300">
           <h2 className="text-2xl font-bold mb-6">Add New Update</h2>
-          
-          {successMessage && (
-            <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
-              {successMessage}
-            </div>
-          )}
-          
-          {error && (
-            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-              Error: {error}
-            </div>
-          )}
           
           <form onSubmit={handleSubmit}>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -435,6 +522,23 @@ Make sure the output is clear, engaging, and suitable for a general blog audienc
                     "Enter title and subtitle to enable AI content generation."}
                 </p>
               </div>
+              
+              {/* Pin Status Option */}
+              <div className="md:col-span-2">
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="isTop"
+                    name="isTop"
+                    checked={formData.isTop}
+                    onChange={handleInputChange}
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="isTop" className="ml-2 block text-sm text-gray-700">
+                    Pin this update to the top (featured update)
+                  </label>
+                </div>
+              </div>
             </div>
             
             <div className="flex justify-end">
@@ -466,7 +570,73 @@ Make sure the output is clear, engaging, and suitable for a general blog audienc
         </div>
       )}
 
-      {/* Display updates */}
+      {/* Display pinned updates first */}
+      {!loading && !error && updates.length > 0 && updates.some(update => update.isTop) && (
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold mb-4 text-gray-800 flex items-center">
+            <svg className="w-5 h-5 mr-2 text-yellow-500" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+              <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z"></path>
+            </svg>
+            Featured Updates
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {updates.filter(update => update.isTop).map(update => (
+              <div key={update._id} className="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-300 border-2 border-yellow-400">
+                <div className="h-48 overflow-hidden relative">
+                  <img 
+                    src={update.image} 
+                    alt={update.title} 
+                    className="w-full h-full object-cover transform hover:scale-105 transition-transform duration-300"
+                  />
+                  <div className="absolute top-2 right-2 flex space-x-2">
+                    <button 
+                      onClick={() => togglePinStatus(update._id, update.isTop)}
+                      disabled={actionInProgress}
+                      className="bg-yellow-500 hover:bg-yellow-600 text-white p-2 rounded-full transition-colors duration-300"
+                      title="Unpin this update"
+                    >
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z"></path>
+                      </svg>
+                    </button>
+                    <button 
+                      onClick={() => deleteUpdate(update._id)}
+                      disabled={actionInProgress}
+                      className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-full transition-colors duration-300"
+                      title="Delete this update"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <div className="p-6">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm text-gray-500">{update.date}</span>
+                    <span className="text-sm text-gray-500">{update.readTime}</span>
+                  </div>
+                  <h2 className="text-xl font-bold mb-2 text-gray-800">{update.title}</h2>
+                  <h3 className="text-md text-gray-600 mb-3">{update.subtitle}</h3>
+                  <p className="text-gray-700 mb-4">
+                    {update.content.length > 100 
+                      ? `${update.content.substring(0, 100)}...` 
+                      : update.content}
+                  </p>
+                  <button 
+                    onClick={() => openReadMore(update)}
+                    className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md transition-colors duration-300"
+                  >
+                    Read More
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Display regular updates */}
       {loading ? (
         <div className="flex justify-center my-8">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
@@ -480,79 +650,119 @@ Make sure the output is clear, engaging, and suitable for a general blog audienc
           <p className="text-xl text-gray-600">No updates available yet.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {updates.map(update => (
-            <div key={update._id} className="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-300">
-              <div className="h-48 overflow-hidden">
-                <img 
-                  src={update.image} 
-                  alt={update.title} 
-                  className="w-full h-full object-cover transform hover:scale-105 transition-transform duration-300"
-                />
-              </div>
-              <div className="p-6">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm text-gray-500">{update.date}</span>
-                  <span className="text-sm text-gray-500">{update.readTime}</span>
-                </div>
-                <h2 className="text-xl font-bold mb-2 text-gray-800">{update.title}</h2>
-                <h3 className="text-md text-gray-600 mb-3">{update.subtitle}</h3>
-                <p className="text-gray-700 mb-4">
-                  {update.content.length > 100 
-                    ? `${update.content.substring(0, 100)}...` 
-                    : update.content}
-                </p>
-                <button 
-                  onClick={() => openReadMore(update)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md transition-colors duration-300"
-                >
-                  Read More
-                </button>
+        <>
+          {updates.some(update => !update.isTop) && (
+            <div>
+              <h2 className="text-2xl font-bold mb-4 text-gray-800">All Updates</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {updates.filter(update => !update.isTop).map(update => (
+                  <div key={update._id} className="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-300">
+                    <div className="h-48 overflow-hidden relative">
+                      <img 
+                        src={update.image} 
+                        alt={update.title} 
+                        className="w-full h-full object-cover transform hover:scale-105 transition-transform duration-300"
+                      />
+                      <div className="absolute top-2 right-2 flex space-x-2">
+                        <button 
+                          onClick={() => togglePinStatus(update._id, update.isTop)}
+                          disabled={actionInProgress}
+                          className="bg-gray-200 hover:bg-yellow-500 text-gray-700 hover:text-white p-2 rounded-full transition-colors duration-300"
+                          title="Pin this update"
+                        >
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v14l-5-2.5L5 18V4z"></path>
+                          </svg>
+                        </button>
+                        <button 
+                          onClick={() => deleteUpdate(update._id)}
+                          disabled={actionInProgress}
+                          className="bg-gray-200 hover:bg-red-500 text-gray-700 hover:text-white p-2 rounded-full transition-colors duration-300"
+                          title="Delete this update"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div className="p-6">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm text-gray-500">{update.date}</span>
+                        <span className="text-sm text-gray-500">{update.readTime}</span>
+                      </div>
+                      <h2 className="text-xl font-bold mb-2 text-gray-800">{update.title}</h2>
+                      <h3 className="text-md text-gray-600 mb-3">{update.subtitle}</h3>
+                      <p className="text-gray-700 mb-4">
+                        {update.content.length > 100 
+                          ? `${update.content.substring(0, 100)}...` 
+                          : update.content}
+                      </p>
+                      <button 
+                        onClick={() => openReadMore(update)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-md transition-colors duration-300"
+                      >
+                        Read More
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
 
       {/* Read More Modal */}
+      {/* Read More Modal */}
       {showModal && selectedUpdate && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-screen overflow-auto">
-            <div className="relative">
-              <img 
-                src={selectedUpdate.image} 
-                alt={selectedUpdate.title} 
-                className="w-full h-64 object-cover"
-              />
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl flex flex-col max-h-[90vh]">
+            {/* Fixed header with close button */}
+            <div className="p-6 border-b sticky top-0 bg-white z-10 flex justify-between items-center">
+              <h2 className="text-2xl font-bold text-gray-800">{selectedUpdate.title}</h2>
               <button 
                 onClick={closeModal}
-                className="absolute top-4 right-4 bg-black bg-opacity-50 hover:bg-opacity-70 text-white p-2 rounded-full transition-colors duration-300"
+                className="text-gray-500 hover:text-gray-700"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
                 </svg>
               </button>
             </div>
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-4">
-                <span className="text-sm text-gray-500">{selectedUpdate.date}</span>
-                <span className="text-sm text-gray-500">{selectedUpdate.readTime}</span>
+            
+            {/* Scrollable content */}
+            <div className="p-6 overflow-y-auto flex-1">
+              <div className="flex justify-between items-center mb-4 text-sm text-gray-600">
+                <span>{selectedUpdate.date}</span>
+                <span>{selectedUpdate.readTime}</span>
               </div>
-              <h2 className="text-3xl font-bold mb-3 text-gray-800">{selectedUpdate.title}</h2>
-              <h3 className="text-xl text-gray-600 mb-6">{selectedUpdate.subtitle}</h3>
+              
+              <h3 className="text-xl text-gray-700 mb-4">{selectedUpdate.subtitle}</h3>
+              
+              <div className="mb-6">
+                <img 
+                  src={selectedUpdate.image} 
+                  alt={selectedUpdate.title} 
+                  className="w-full h-auto max-h-96 object-contain rounded-lg"
+                />
+              </div>
               
               <div className="prose max-w-none">
-                <p className="text-gray-700 whitespace-pre-line">{selectedUpdate.content}</p>
+                {selectedUpdate.content.split('\n').map((paragraph, index) => (
+                  paragraph ? <p key={index} className="mb-4">{paragraph}</p> : <br key={index} />
+                ))}
               </div>
-              
-              <div className="mt-8 flex justify-end">
-                <button 
-                  onClick={closeModal}
-                  className="bg-gray-200 hover:bg-gray-300 text-gray-800 py-2 px-6 rounded-md transition-colors duration-300"
-                >
-                  Close
-                </button>
-              </div>
+            </div>
+            
+            {/* Fixed footer */}
+            <div className="p-4 border-t sticky bottom-0 bg-white z-10 flex justify-end">
+              <button 
+                onClick={closeModal}
+                className="bg-gray-300 hover:bg-gray-400 text-gray-800 py-2 px-4 rounded-md transition-colors duration-300"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

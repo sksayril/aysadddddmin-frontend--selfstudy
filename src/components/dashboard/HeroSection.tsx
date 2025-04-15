@@ -1,17 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, Monitor, Smartphone, X, Plus, Image } from 'lucide-react';
+import { Upload, Monitor, Smartphone, X, Plus, Image, Trash2, Link } from 'lucide-react';
 
 function HeroSection() {
   const [banners, setBanners] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [title, setTitle] = useState('');
+  const [url, setUrl] = useState(''); // Added URL state
   const [desktopFile, setDesktopFile] = useState(null);
   const [mobileFile, setMobileFile] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [desktopPreview, setDesktopPreview] = useState(null);
   const [mobilePreview, setMobilePreview] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   
   const desktopDropRef = useRef(null);
   const mobileDropRef = useRef(null);
@@ -89,13 +91,20 @@ function HeroSection() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!title || !desktopFile || !mobileFile) {
+    if (!title || !url || !desktopFile || !mobileFile) {
       setError('Please fill all fields');
+      return;
+    }
+
+    // Basic URL validation
+    if (!url.match(/^(http|https):\/\/[^ "]+$/)) {
+      setError('Please enter a valid URL starting with http:// or https://');
       return;
     }
 
     const formData = new FormData();
     formData.append('title', title);
+    formData.append('url', url); // Added URL to form data
     formData.append('desktop', desktopFile);
     formData.append('mobile', mobileFile);
 
@@ -133,8 +142,46 @@ function HeroSection() {
     }
   };
 
+  // Delete banner function
+  const handleDeleteBanner = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this banner?')) {
+      return;
+    }
+
+    try {
+      setDeleteLoading(true);
+      const response = await fetch('https://api.notesmarket.in/api/delete-hero-banner', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete banner');
+      }
+
+      // Refresh banners list
+      const bannersResponse = await fetch('https://api.notesmarket.in/api/get/hero-banners');
+      const bannersData = await bannersResponse.json();
+      setBanners(bannersData.data);
+      
+      setSuccessMessage('Banner deleted successfully!');
+      setTimeout(() => {
+        setSuccessMessage('');
+      }, 3000);
+      
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   const resetForm = () => {
     setTitle('');
+    setUrl(''); // Reset URL
     setDesktopFile(null);
     setMobileFile(null);
     setDesktopPreview(null);
@@ -196,8 +243,27 @@ function HeroSection() {
         <div className="grid grid-cols-1 gap-6">
           {banners.map((banner) => (
             <div key={banner._id} className="border rounded-lg p-4 bg-gray-50">
-              <h4 className="text-lg font-medium mb-2">{banner.title}</h4>
-              <p className="text-sm text-gray-500 mb-3">ID: {banner._id}</p>
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <h4 className="text-lg font-medium">{banner.title}</h4>
+                  <p className="text-sm text-gray-500">ID: {banner._id}</p>
+                </div>
+                <button 
+                  onClick={() => handleDeleteBanner(banner._id)}
+                  className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-full"
+                  disabled={deleteLoading}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+              
+              {/* Display banner URL */}
+              <div className="mb-3 bg-gray-100 p-2 rounded text-sm flex items-center text-blue-600">
+                <Link size={14} className="mr-2" />
+                <a href={banner.url} target="_blank" rel="noopener noreferrer" className="truncate hover:underline">
+                  {banner.url}
+                </a>
+              </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-white p-3 rounded border">
@@ -267,6 +333,23 @@ function HeroSection() {
                     onChange={(e) => setTitle(e.target.value)}
                     placeholder="Enter banner title"
                   />
+                </div>
+                
+                {/* URL Field */}
+                <div className="mb-4">
+                  <label className="block text-gray-700 text-sm font-bold mb-2 flex items-center" htmlFor="url">
+                    <Link size={16} className="mr-2" />
+                    Banner URL
+                  </label>
+                  <input
+                    id="url"
+                    type="text"
+                    className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    placeholder="https://example.com/page"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Enter the URL where users will be directed when they click on this banner</p>
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
