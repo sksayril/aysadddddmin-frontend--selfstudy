@@ -5,6 +5,7 @@ import Blogs from './dashboard/Blogs';
 import HeroSection from './dashboard/HeroSection';
 import Banner from './dashboard/Banner';
 import LatestUpdates from './dashboard/LatestUpdates';
+import Sponser from './dashboard/Sponser';
 
 interface DashboardProps {
   activeSection: string;
@@ -25,6 +26,8 @@ function Dashboard({ activeSection }: DashboardProps) {
         return <Banner />;
       case 'updates':
         return <LatestUpdates />;
+      case 'sponser':
+        return <Sponser />;
       default:
         return (
           <div className="bg-white rounded-lg shadow-md p-6">

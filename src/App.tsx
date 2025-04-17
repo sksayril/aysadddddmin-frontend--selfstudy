@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, X, LayoutDashboard, ListPlus, Image, Bell, LogOut } from 'lucide-react';
+import { Menu, X, LayoutDashboard, ListPlus, Image, Bell, LogOut,Sparkle } from 'lucide-react';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 
@@ -35,6 +35,7 @@ function App() {
     { id: 'hero', label: 'Hero Section', icon: Image },
     { id: 'banner', label: 'Quiz', icon: Image },
     { id: 'updates', label: 'Latest Updates', icon: Bell },
+    { id: 'sponser', label: 'Sponser ', icon: Sparkle },
   ];
 
   return (
