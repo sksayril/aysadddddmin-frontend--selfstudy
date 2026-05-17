@@ -1195,7 +1195,7 @@
 //                   defaultExpanded={selectedCategory?._id === parent._id}
 //                   onClick={() => handleCategoryClick(parent)}
 //                 >
-//                   {categories.map((category) => (
+//                   {sidebarItemsForParent(parent).map((category) => (
 //                     <div key={category._id} className="relative group">
 //                       <TreeItem
 //                         label={
@@ -1498,6 +1498,14 @@ interface ParentCategory {
   _id: string;
   name: string;
   path: string[];
+}
+
+function isMainCategory(category: { parentId?: string }) {
+  return !category.parentId;
+}
+
+function toCategory(item: Category | ParentCategory): Category {
+  return item as Category;
 }
 
 interface UploadedFile {
@@ -1938,8 +1946,9 @@ function Categories() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [parentCategories, setParentCategories] = useState<ParentCategory[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
-  const [previousCategory, setPreviousCategory] = useState<Category | null>(null);
   const [categoryStack, setCategoryStack] = useState<Category[]>([]);
+  const [sidebarChildren, setSidebarChildren] = useState<Category[]>([]);
+  const [sidebarChildrenParentId, setSidebarChildrenParentId] = useState<string | null>(null);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [loadingParents, setLoadingParents] = useState(true);
   const [loadingChildren, setLoadingChildren] = useState(false);
@@ -2044,16 +2053,25 @@ function Categories() {
         // If deleting current selected category, reset selection
         if (selectedCategory && selectedCategory._id === categoryToDelete._id) {
           setSelectedCategory(null);
+          setCategoryStack([]);
+          setSidebarChildren([]);
+          setSidebarChildrenParentId(null);
+        } else if (selectedCategory) {
+          await loadChildrenForParent(selectedCategory._id);
+          await loadSidebarChildren(resolveMainParentId(selectedCategory));
         }
-        
-        // Refresh the appropriate list
+
         if ('parentId' in categoryToDelete && categoryToDelete.parentId) {
-          // It's a subcategory
-          fetchCategories(categoryToDelete.parentId);
+          if (sidebarChildrenParentId === categoryToDelete.parentId) {
+            await loadSidebarChildren(categoryToDelete.parentId);
+          }
         } else {
-          // It's a main category
           fetchParentCategories();
-          setCategories([]);
+          if (!selectedCategory) {
+            setCategories([]);
+            setSidebarChildren([]);
+            setSidebarChildrenParentId(null);
+          }
         }
       } else {
         const errorData = await response.json();
@@ -2134,30 +2152,45 @@ function Categories() {
     }
   };
 
-  const fetchCategories = async (parentId?: string) => {
+  const fetchSubcategories = async (parentId: string): Promise<Category[]> => {
+    const response = await fetch(`${apiBaseUrl}/categories/subcategories/${parentId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch categories');
+    }
+    const data = await response.json();
+    return data[0]?.subcategories ?? [];
+  };
+
+  const loadChildrenForParent = async (parentId: string) => {
     try {
-      setLoadingChildren(true);
-      const url = parentId 
-        ? `${apiBaseUrl}/categories/subcategories/${parentId}`
-        : `${apiBaseUrl}/categories`;
-      
-      const response = await fetch(url, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch categories');
-      }
-      
-      const data = await response.json();
-      const subcategories = parentId && data[0]?.subcategories ? data[0].subcategories : data || [];
+      const subcategories = await fetchSubcategories(parentId);
       setCategories(subcategories);
-    } catch (err) {
+    } catch {
       setError('Failed to fetch categories');
-    } finally {
-      setLoadingChildren(false);
+      setCategories([]);
+    }
+  };
+
+  const resolveMainParentId = (category: Category | ParentCategory): string => {
+    if (!category.parentId) return category._id;
+    const mainName = category.path?.[0];
+    if (mainName) {
+      const main = parentCategories.find((p) => p.name === mainName);
+      if (main) return main._id;
+    }
+    return category.parentId;
+  };
+
+  const loadSidebarChildren = async (parentId: string) => {
+    try {
+      const subcategories = await fetchSubcategories(parentId);
+      setSidebarChildren(subcategories);
+      setSidebarChildrenParentId(parentId);
+    } catch {
+      setSidebarChildren([]);
+      setSidebarChildrenParentId(null);
     }
   };
 
@@ -2179,78 +2212,94 @@ function Categories() {
     return null;
   };
 
+  const applySelectedCategory = async (category: Category) => {
+    setSelectedCategory(category);
+    setIsLastCategory(category.type === 'content');
+    await loadChildrenForParent(category._id);
+    await loadSidebarChildren(resolveMainParentId(category));
+    if (!category.parentId) {
+      fetchParentCategories();
+    }
+  };
+
   const handleCategoryClick = async (category: Category | ParentCategory) => {
+    if (selectedCategory?._id === category._id) return;
+
     setError('');
     setLoadingChildren(true);
-    if (selectedCategory && selectedCategory._id !== category._id) {
-      setCategoryStack((prev) => [...prev, selectedCategory]);
-    }
 
-    const full = await fetchCategoryById(category._id);
-    const next = full ?? (category as Category);
-    setSelectedCategory(next);
-    setIsLastCategory(next.type === 'content');
-    await fetchCategories(category._id);
+    try {
+      const full = await fetchCategoryById(category._id);
+      const next = full ?? toCategory(category);
+
+      if (selectedCategory) {
+        const stackIndex = categoryStack.findIndex((c) => c._id === next._id);
+        if (stackIndex >= 0) {
+          setCategoryStack(categoryStack.slice(0, stackIndex));
+        } else if (!next.parentId) {
+          setCategoryStack([]);
+        } else if (next._id === selectedCategory.parentId) {
+          setCategoryStack((stack) => stack.slice(0, -1));
+        } else if (next.parentId === selectedCategory._id) {
+          setCategoryStack((stack) => [...stack, selectedCategory]);
+        } else if (next.parentId === selectedCategory.parentId) {
+          // sibling — keep stack depth
+        } else {
+          const nextDepth = next.path?.length ?? 1;
+          const currentDepth = selectedCategory.path?.length ?? 1;
+          if (nextDepth < currentDepth) {
+            setCategoryStack((stack) =>
+              stack.slice(0, Math.max(0, stack.length - (currentDepth - nextDepth))),
+            );
+          } else if (nextDepth > currentDepth) {
+            setCategoryStack((stack) => [...stack, selectedCategory]);
+          } else {
+            setCategoryStack((stack) => (stack.length ? stack.slice(0, -1) : stack));
+          }
+        }
+      }
+
+      await applySelectedCategory(next);
+    } catch {
+      setError('Failed to open category');
+    } finally {
+      setLoadingChildren(false);
+    }
   };
 
   const handleGoBack = async () => {
-    if (categoryStack.length > 0) {
-      // Get the last category from stack
-      const prevCategory = categoryStack[categoryStack.length - 1];
-      
-      // Remove the last category from stack
-      setCategoryStack(prev => prev.slice(0, -1));
-      
-      // If it's a main category, clear the stack
-      if (!prevCategory.parentId) {
-        setCategoryStack([]);
+    setError('');
+    setLoadingChildren(true);
+
+    try {
+      if (categoryStack.length > 0) {
+        const prev = categoryStack[categoryStack.length - 1];
+        setCategoryStack((stack) => stack.slice(0, -1));
+        const fresh = await fetchCategoryById(prev._id);
+        await applySelectedCategory(fresh ?? prev);
+        return;
       }
-      
-      // Set as selected category
-      setSelectedCategory(prevCategory);
-      
-      // If it has a parent, fetch its siblings
-      if (prevCategory.parentId) {
-        await fetchCategories(prevCategory.parentId);
-      } else {
-        // If it's a main category, fetch its subcategories
-        await fetchCategories(prevCategory._id);
-        // Also refresh parent categories
-        fetchParentCategories();
-      }
-    } else {
-      // If stack is empty but we have a selected category with parentId
-      if (selectedCategory && selectedCategory.parentId) {
-        // Get the parent category
-        try {
-          const response = await fetch(`${apiBaseUrl}/categories/${selectedCategory.parentId}`, {
-            headers: {
-              'Authorization': `Bearer ${token}`
-            }
-          });
-          
-          if (response.ok) {
-            const parentCategory = await response.json();
-            setSelectedCategory(parentCategory);
-            
-            // If parent has a parent, fetch siblings
-            if (parentCategory.parentId) {
-              await fetchCategories(parentCategory.parentId);
-            } else {
-              // If parent is a main category, fetch its subcategories
-              await fetchCategories(parentCategory._id);
-              fetchParentCategories();
-            }
-          }
-        } catch (err) {
-          setError('Failed to fetch parent category');
+
+      if (selectedCategory?.parentId) {
+        const fresh = await fetchCategoryById(selectedCategory.parentId);
+        if (fresh) {
+          setCategoryStack([]);
+          await applySelectedCategory(fresh);
         }
-      } else {
-        // Reset to top level view
-        setSelectedCategory(null);
-        setCategories([]);
-        fetchParentCategories();
+        return;
       }
+
+      setSelectedCategory(null);
+      setCategoryStack([]);
+      setCategories([]);
+      setSidebarChildren([]);
+      setSidebarChildrenParentId(null);
+      setIsLastCategory(false);
+      await fetchParentCategories();
+    } catch {
+      setError('Failed to go back');
+    } finally {
+      setLoadingChildren(false);
     }
   };
 
@@ -2281,15 +2330,18 @@ function Categories() {
         });
         
         setNewCategoryName('');
+        const data = await response.json();
+
         if (selectedCategory) {
-          fetchCategories(selectedCategory._id);
+          if (isLastCategory) {
+            setCategoryStack((prev) => [...prev, selectedCategory]);
+            await applySelectedCategory(data);
+          } else {
+            await loadChildrenForParent(selectedCategory._id);
+            await loadSidebarChildren(resolveMainParentId(selectedCategory));
+          }
         } else {
           fetchParentCategories();
-        }
-
-        const data = await response.json();
-        if (isLastCategory) {
-          setSelectedCategory(data);
         }
       } else {
         setError('Failed to add category');
@@ -2390,12 +2442,7 @@ function Categories() {
         const refreshed = await fetchCategoryById(selectedCategory._id);
         if (refreshed) {
           setSelectedCategory(refreshed);
-        }
-
-        if (selectedCategory.parentId) {
-          fetchCategories(selectedCategory.parentId);
-        } else {
-          fetchParentCategories();
+          await loadChildrenForParent(refreshed._id);
         }
       } else {
         const errorData = await response.json().catch(() => ({}));
@@ -2425,6 +2472,32 @@ function Categories() {
     : categories;
 
   const canAddSubcategory = selectedCategory && !isContentCategory(selectedCategory);
+
+  const canGoBack = Boolean(selectedCategory);
+
+  const parentFolderName =
+    selectedCategory?.path && selectedCategory.path.length > 1
+      ? selectedCategory.path[selectedCategory.path.length - 2]
+      : selectedCategory?.parentId
+        ? parentCategories.find((p) => p._id === selectedCategory.parentId)?.name ?? 'Parent'
+        : '';
+
+  const backTargetLabel =
+    categoryStack.length > 0
+      ? categoryStack[categoryStack.length - 1].name
+      : selectedCategory?.parentId
+        ? parentFolderName
+        : 'all categories';
+
+  const isOnMainBranch = (parent: ParentCategory) => {
+    if (!selectedCategory) return false;
+    if (selectedCategory._id === parent._id) return true;
+    if (selectedCategory.path?.[0] === parent.name) return true;
+    return false;
+  };
+
+  const sidebarItemsForParent = (parent: ParentCategory) =>
+    isOnMainBranch(parent) && sidebarChildrenParentId === parent._id ? sidebarChildren : [];
 
   return (
     <div className="flex gap-6 min-h-[calc(100vh-8rem)]">
@@ -2456,7 +2529,7 @@ function Categories() {
                   }
                   onClick={() => handleCategoryClick(parent)}
                 >
-                  {categories.map((category) => (
+                  {sidebarItemsForParent(parent).map((category) => (
                     <div key={category._id} className="relative group">
                       <TreeItem
                         label={category.name}
@@ -2556,9 +2629,17 @@ function Categories() {
               <>
             <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
               <div className="flex items-center gap-3 min-w-0">
-                <button type="button" onClick={handleGoBack} className="p-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleGoBack}
+                  disabled={!canGoBack}
+                  className="p-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-1 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                  title={canGoBack ? `Back to ${backTargetLabel}` : 'Back'}
+                >
                   <ArrowLeft size={18} />
-                  <span className="text-sm hidden sm:inline">Back</span>
+                  <span className="text-sm hidden sm:inline">
+                    {canGoBack ? `Back to ${backTargetLabel}` : 'Back'}
+                  </span>
                 </button>
                 <div className="min-w-0">
                   <h2 className="text-xl font-semibold text-gray-900 truncate">{selectedCategory.name}</h2>
