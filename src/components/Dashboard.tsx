@@ -11,6 +11,16 @@ interface DashboardProps {
   activeSection: string;
 }
 
+const sectionTitles: Record<string, string> = {
+  dashboard: 'Dashboard',
+  categories: 'Categories',
+  blogs: 'Blogs',
+  hero: 'Hero Section',
+  banner: 'Quiz',
+  updates: 'Latest Updates',
+  sponser: 'Sponsor',
+};
+
 function Dashboard({ activeSection }: DashboardProps) {
   const renderContent = () => {
     switch (activeSection) {
@@ -40,11 +50,13 @@ function Dashboard({ activeSection }: DashboardProps) {
     }
   };
 
+  const pageTitle = sectionTitles[activeSection] ?? activeSection;
+
   return (
-    <div className="p-8">
-      <h1 className="text-2xl font-bold mb-8 capitalize">
-        {activeSection}
-      </h1>
+    <div className="p-6 md:p-8">
+      {activeSection !== 'dashboard' && (
+        <h1 className="text-2xl font-bold text-slate-800 mb-6 md:mb-8">{pageTitle}</h1>
+      )}
       {renderContent()}
     </div>
   );
